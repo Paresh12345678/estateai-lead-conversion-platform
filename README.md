@@ -1,6 +1,6 @@
 # EstateAI
 
-EstateAI is a responsive real-estate lead conversion workspace built with React, TypeScript, Tailwind CSS, Express, Supabase, and Anthropic Claude. It includes a real CRM and listing workflow, AI qualification and drafting, property matching, analytics, and an event activity log.
+EstateAI is a responsive real-estate lead conversion workspace built with React, TypeScript, Tailwind CSS, Express, Supabase, and a configurable AI provider (Anthropic or local Ollama). It includes a real CRM and listing workflow, AI qualification and drafting, property matching, analytics, and an event activity log.
 
 > **Demo records:** The included Austin, Dallas, and Miami listings and leads are fictional demonstration data. In local demo mode, lead changes and chat history are stored in this browser's local storage. With Supabase configured, the same sample records are available alongside each signed-in user's records.
 
@@ -14,14 +14,33 @@ Copy-Item .env.example .env
 npm run dev
 ```
 
-Open the Vite URL printed in the terminal (normally `http://localhost:5173`). The app starts in local demo mode. CRM edits and conversations persist in browser storage. **AI requests use a real Anthropic API call** and will show a configuration error until `ANTHROPIC_API_KEY` is set in `.env`; there are no canned AI responses.
+Open the Vite URL printed in the terminal (normally `http://localhost:5173`). The app starts in local demo mode. CRM edits and conversations persist in browser storage. AI requests use the real provider selected in `.env`; the default is Anthropic.
 
 ```dotenv
+AI_PROVIDER=anthropic
 ANTHROPIC_API_KEY=your-server-side-key
 ANTHROPIC_MODEL=claude-sonnet-4-20250514
 ```
 
-Restart the API after changing `.env`. Never put the Anthropic key in a `VITE_` variable or browser code.
+### Use local Ollama (no per-request API charge)
+
+1. Install Ollama for Windows, then download a model in PowerShell:
+
+   ```powershell
+   ollama pull qwen2.5:3b
+   ```
+
+2. Set these server-side values in `.env`:
+
+   ```dotenv
+   AI_PROVIDER=ollama
+   OLLAMA_BASE_URL=http://127.0.0.1:11434
+   OLLAMA_MODEL=qwen2.5:3b
+   ```
+
+Ollama must be running locally. No API key is required; model inference uses your computer's resources. The health endpoint reports the AI as configured only when the selected Ollama model is installed.
+
+To use Anthropic instead, set `AI_PROVIDER=anthropic` and provide `ANTHROPIC_API_KEY`. Never put the Anthropic key in a `VITE_` variable or browser code. Restart the API after changing `.env`.
 
 ## Supabase setup
 
@@ -35,10 +54,12 @@ Restart the API after changing `.env`. Never put the Anthropic key in a `VITE_` 
    VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
    SUPABASE_URL=https://YOUR_PROJECT.supabase.co
    SUPABASE_ANON_KEY=your-supabase-anon-key
-   ANTHROPIC_API_KEY=your-server-side-key
+   AI_PROVIDER=ollama
+   OLLAMA_BASE_URL=http://127.0.0.1:11434
+   OLLAMA_MODEL=qwen2.5:3b
    ```
 
-5. Restart the dev server. The app switches to Supabase Auth and Postgres mode and requires sign-in.
+5. Restart the dev server. The app switches to Supabase Auth and Postgres mode and requires sign-in. If using Anthropic rather than Ollama, configure `AI_PROVIDER=anthropic` and `ANTHROPIC_API_KEY` instead.
 
 The Supabase anon key is intended for browser use and is not a service-role key. RLS isolates user-created leads, properties, conversations, drafts, workflow records, and activity logs. The shared sample records are marked `is_demo`; demo leads are editable for exploration but cannot be deleted. **Never expose a Supabase service-role key to the browser.**
 
@@ -57,7 +78,7 @@ The Supabase anon key is intended for browser use and is not a service-role key.
 
 - **React UI (`src/`)** — responsive workspace navigation, dashboard, lead CRM, property inventory, AI chat, follow-up editor, and insights. Tailwind is available for utility styling; shared layout and visual system live in `src/App.css`.
 - **Data layer (`src/storage.ts`)** — uses Supabase Postgres when configured; otherwise uses clearly identified fictional demo records and local storage. AI chat history and generated follow-up drafts persist in the active data mode.
-- **Express API (`server/index.ts`)** — validates requests with Zod, checks the signed-in Supabase user when cloud auth is configured, applies a per-IP request limit, calls Anthropic from the server, validates structured model responses, and retries transient provider failures once. No model key is sent to the browser.
+- **Express API (`server/index.ts`)** — validates requests with Zod, checks the signed-in Supabase user when cloud auth is configured, applies a per-IP request limit, calls the selected Anthropic or Ollama provider from the server, and validates structured model responses. No model key is sent to the browser.
 - **Postgres (`supabase/schema.sql`)** — profiles, leads, properties, conversations, messages, recommendations, follow-ups, workflow executions, and AI activity logs, with ownership policies and indexes.
 - **Matching** — transparent score based on budget fit, requested city, property type, bedroom count, and keyword overlap with listing amenities/description. Matches are ranked and labeled with the criteria that contributed.
 - **Workflows** — creating a lead starts qualification; high scores create priority activity; matching and follow-up drafting create activity entries; CRM status changes and scheduled reminders are recorded. Draft communication is saved for review and is never sent automatically.
@@ -76,7 +97,7 @@ All agent requests use `POST /api/agent` with JSON. When Supabase is configured,
 
 ### Health
 
-`GET /api/health` returns `{ "status": "ok", "aiConfigured": boolean, "cloudAuth": boolean }`. It never exposes a secret.
+`GET /api/health` returns `{ "status": "ok", "aiConfigured": boolean, "aiProvider": "anthropic" | "ollama", "cloudAuth": boolean }`. For Ollama, `aiConfigured` is true only when the local service is reachable and the configured model is installed. It never exposes a secret.
 
 ### Lead qualification
 
